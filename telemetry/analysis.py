@@ -84,6 +84,35 @@ def summarize(res: CleanResult, opt: CleanOptions | None = None) -> dict:
     env = {c: _stats(df[c]) for c in ("bme_temp", "bme_hum", "bme_press", "air_density") if c in df.columns}
     if env:
         out["environment"] = env
+    if "airspeed_kmh" in df.columns and df["airspeed_kmh"].notna().any():
+        air = {"max_airspeed_kmh": _f(df["airspeed_kmh"].max(), 1)}
+        if "wind_kmh" in df.columns and "speed_kmh" in df.columns:
+            fast = df["speed_kmh"] > 40
+            air["mean_headwind_kmh_above_40"] = _f(df.loc[fast, "wind_kmh"].mean(), 1)
+        if "q_gps_pa" in df.columns:
+            both = df[["dp_pa", "q_gps_pa"]].dropna()
+            both = both[both["q_gps_pa"] > 20]
+            if len(both) > 10:
+                air["corr_dp_vs_q_gps"] = _f(both.corr().iloc[0, 1], 3)
+                air["dp_over_q_gps"] = _f((both["dp_pa"] / both["q_gps_pa"]).median(), 3)
+        out["airspeed"] = air
+
+    if "res_level" in df.columns:
+        st = {"warning_s": int((df["res_level"] == 2).sum()), "caution_s": int((df["res_level"] == 1).sum())}
+        hot = df.loc[df["res_level"] >= 1, "res_freq_hz"].dropna()
+        st["resonance_freq_hz"] = _f(hot.round(0).mode().iloc[0], 0) if len(hot) else None
+        st["natural_freq_hz"] = _f(df["res_fn_hz"].dropna().iloc[-1], 1) if df["res_fn_hz"].notna().any() else None
+        for a in ("x", "y", "z"):
+            c = f"disp_{a}_mm"
+            if c in df.columns:
+                st[f"disp_{a}_max_mm"] = _f(df[c].max(), 3)
+                st[f"disp_{a}_mean_mm"] = _f(df[c].mean(), 3)
+        if "pitch_static_deg" in df.columns and "speed_kmh" in df.columns:
+            slow = df.loc[df["speed_kmh"] < 10, "pitch_static_deg"].median()
+            fast = df.loc[df["speed_kmh"] > 70, "pitch_static_deg"].median()
+            st["pitch_change_70kmh_deg"] = _f(fast - slow, 2) if pd.notna(slow) and pd.notna(fast) else None
+        out["structure"] = st
+
     if "load_mean" in df.columns:
         out["load"] = _stats(df["load_mean"], 3)
 

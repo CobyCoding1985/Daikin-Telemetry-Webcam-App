@@ -35,6 +35,7 @@ class CleanOptions:
     min_vib_amp_ms2: float = 0.05            # dominant frequency below this amplitude is noise
     gap_s: float = 1.5                       # time step above this = gap
     moving_kmh: float = 5.0                  # "moving" threshold for stats
+    imu_x_forward: bool = True               # IMU X axis points to the front of the car (for static pitch)
 
 
 @dataclass
@@ -236,6 +237,11 @@ def clean_session(raw: pd.DataFrame, opt: CleanOptions | None = None, name: str 
             _mask(df, [f"{a}_freq"], df[f"{a}_amp"] < opt.min_vib_amp_ms2, res, "vibration",
                   f"{a}: dominant frequency of a peak below {opt.min_vib_amp_ms2:g} m/s^2 (noise)")
 
+    # resonance fields: 0 means "no peak" / "fn not set", not a measurement
+    for c in ("res_freq_hz", "res_amp_ms2", "res_ratio", "res_fn_hz"):
+        if c in df.columns:
+            df[c] = df[c].where(df[c] > 0)
+
     # 9. derived --------------------------------------------------------------------------------
     dt = df["time"].diff().dt.total_seconds()
     consecutive = (dt > 0) & (dt <= opt.gap_s)
@@ -252,6 +258,20 @@ def clean_session(raw: pd.DataFrame, opt: CleanOptions | None = None, name: str 
     rms_cols = [f"{a}_rms" for a in AXES if f"{a}_rms" in df.columns]
     if len(rms_cols) == 3:
         df["vib_rms_total"] = np.sqrt((df[rms_cols] ** 2).sum(axis=1, min_count=3))
+    if "airspeed_ms" in df.columns:
+        df["airspeed_kmh"] = df["airspeed_ms"] * 3.6
+        if "speed_kmh" in df.columns:           # > 0 = headwind (exact only when driving straight)
+            df["wind_kmh"] = df["airspeed_kmh"] - df["speed_kmh"]
+    if "air_density" in df.columns and "speed_kmh" in df.columns:
+        df["q_gps_pa"] = 0.5 * df["air_density"] * (df["speed_kmh"] / 3.6) ** 2
+    disp = [f"disp_{a}_mm" for a in ("x", "y", "z") if f"disp_{a}_mm" in df.columns]
+    if len(disp) == 3:
+        df["disp_total_mm"] = np.sqrt((df[disp] ** 2).sum(axis=1, min_count=3))
+    if "pitch_deg" in df.columns and "long_accel_ms2" in df.columns:
+        # an accelerating car tilts the measured gravity vector by atan(a/g): remove it to keep
+        # only the bending of the support (+ road slope)
+        k = 1.0 if opt.imu_x_forward else -1.0
+        df["pitch_static_deg"] = df["pitch_deg"] + k * np.degrees(np.arctan(df["long_accel_ms2"] / 9.80665))
     if "batt_v" in df.columns and "batt_a" in df.columns:
         df["batt_w"] = df["batt_v"] * df["batt_a"]
         df["energy_wh"] = (df["batt_w"] * dt.where(consecutive) / 3600.0).fillna(0).cumsum()

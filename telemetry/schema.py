@@ -67,7 +67,26 @@ COLUMNS: dict[str, Col] = {
     "hdop":       Col("HDOP", "", "gps", 0, 100),   # 99.99 = receiver has no fix
     "gps_fix":    Col("GPS fix", "", "gps", 0, 1),
     "gps_age_ms": Col("GPS fix age", "ms", "gps", 0, None),
-    # --- load cell (HX711 now, ADS1256 + 4 gauges later) ---
+    # --- pitot (Matek, firmware 3.0) ---
+    "dp_pa":       Col("Pitot diff. pressure", "Pa", "air", -3000, 7000),
+    "dp_std_pa":   Col("Pitot pressure std", "Pa", "air", 0, None),
+    "airspeed_ms": Col("Airspeed", "m/s", "air", -80, 120),
+    "pitot_temp":  Col("Pitot sensor temp", "degC", "air", -40, 125),
+    "pitot_n":     Col("Pitot readings", "/s", "air", 0, None),
+    "pitot_err":   Col("Pitot I2C errors", "", "quality", 0, None),
+    # --- structure of the box support (firmware 3.0) ---
+    "disp_x_mm":   Col("Displacement RMS X", "mm", "structure", 0, 50),
+    "disp_y_mm":   Col("Displacement RMS Y", "mm", "structure", 0, 50),
+    "disp_z_mm":   Col("Displacement RMS Z", "mm", "structure", 0, 50),
+    "pitch_deg":   Col("Tilt pitch (vs ref)", "deg", "structure", -90, 90),
+    "roll_deg":    Col("Tilt roll (vs ref)", "deg", "structure", -90, 90),
+    "res_level":   Col("Resonance level", "0/1/2", "structure", 0, 2),
+    "res_freq_hz": Col("Resonance peak freq", "Hz", "structure", 0, 300),
+    "res_amp_ms2": Col("Resonance peak amplitude", "m/s^2", "structure", 0, 80),
+    "res_ratio":   Col("Peak sharpness", "x", "structure", 0, None),
+    "res_fn_hz":   Col("Natural freq (tap test)", "Hz", "structure", 0, 300),
+    "cpu_temp":    Col("Pi CPU temp", "degC", "quality", 0, 110),
+    # --- load cell (sessions before firmware 3.0) ---
     "load_mean": Col("Load mean", "units", "load"),
     "load_min":  Col("Load min", "units", "load"),
     "load_max":  Col("Load max", "units", "load"),
@@ -85,6 +104,11 @@ COLUMNS: dict[str, Col] = {
     "vib_rms_total":  Col("Vibration RMS total", "m/s^2", "derived"),
     "batt_w":         Col("Battery power", "W", "derived"),
     "energy_wh":      Col("Energy used", "Wh", "derived"),
+    "airspeed_kmh":   Col("Airspeed", "km/h", "derived"),
+    "wind_kmh":       Col("Wind (air - GPS)", "km/h", "derived"),
+    "q_gps_pa":       Col("Dyn. pressure from GPS", "Pa", "derived"),
+    "disp_total_mm":  Col("Displacement RMS total", "mm", "derived"),
+    "pitch_static_deg": Col("Static pitch (accel removed)", "deg", "derived"),
 }
 
 # Old CSV from telemetria_4.0.py / v1 Teensy firmware -> current names.

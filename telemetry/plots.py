@@ -258,8 +258,81 @@ def fig_load(df: pd.DataFrame, gaps: pd.DataFrame | None = None, smooth_s: int =
     return _style(fig, "Load cell / strain gauge", 420)
 
 
+def fig_airspeed(df: pd.DataFrame, gaps: pd.DataFrame | None = None, smooth_s: int = 1) -> go.Figure:
+    if not _has(df, "airspeed_kmh"):
+        return empty("No pitot data (firmware 3.0 or later)")
+    d = with_gap_breaks(df)
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, row_heights=[0.6, 0.4])
+    fig.add_trace(go.Scatter(x=_x(d), y=smooth(d["airspeed_kmh"], smooth_s), name="airspeed (pitot)",
+                             line=dict(color=CYAN, width=2)), 1, 1)
+    if "speed_kmh" in d.columns:
+        fig.add_trace(go.Scatter(x=_x(d), y=smooth(d["speed_kmh"], smooth_s), name="GPS speed",
+                                 line=dict(color=GREEN, width=1.5)), 1, 1)
+    if "wind_kmh" in d.columns:
+        fig.add_trace(go.Scatter(x=_x(d), y=smooth(d["wind_kmh"], max(smooth_s, 5)), name="wind (air - GPS)",
+                                 line=dict(color=AMBER, width=1.5)), 2, 1)
+        fig.add_hline(y=0, line=dict(color=MUTED, dash="dot"), row=2, col=1)
+    fig.update_yaxes(title_text="km/h", row=1, col=1)
+    fig.update_yaxes(title_text="km/h (+ headwind)", row=2, col=1)
+    if gaps is not None:
+        shade_gaps(fig, gaps, rows=2)
+    return _style(fig, "Airspeed (pitot) vs ground speed (GPS)", 520)
+
+
+def fig_dp_vs_q(df: pd.DataFrame) -> go.Figure:
+    """Pitot pressure against 0.5*rho*v_GPS^2. On a calm day the points sit on the 1:1 line:
+    a direct check of the pitot calibration and its mounting position."""
+    if not _has(df, "dp_pa", "q_gps_pa"):
+        return empty("Needs pitot, GPS speed and air density")
+    d = df.dropna(subset=["dp_pa", "q_gps_pa"])
+    top = float(max(d["q_gps_pa"].max(), d["dp_pa"].max(), 1.0))
+    fig = go.Figure(go.Scatter(x=d["q_gps_pa"], y=d["dp_pa"], mode="markers", name="1 s windows",
+                               marker=dict(size=5, color=d.get("wind_kmh"), colorscale="RdBu_r", cmid=0,
+                                           showscale="wind_kmh" in d, colorbar=dict(title="wind km/h", thickness=12))))
+    fig.add_trace(go.Scatter(x=[0, top], y=[0, top], mode="lines", name="1:1 (no wind)",
+                             line=dict(color=MUTED, dash="dot")))
+    fig.update_xaxes(title_text="0.5 rho v_GPS^2 (Pa)")
+    fig.update_yaxes(title_text="pitot differential pressure (Pa)")
+    fig = _style(fig, "Pitot vs dynamic pressure from GPS speed", 460)
+    fig.update_layout(hovermode="closest")
+    return fig
+
+
+def fig_structure(df: pd.DataFrame, gaps: pd.DataFrame | None = None, smooth_s: int = 1) -> go.Figure:
+    if not _has(df, "disp_z_mm"):
+        return empty("No structure data (firmware 3.0 or later)")
+    d = with_gap_breaks(df)
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.06,
+                        subplot_titles=("Displacement RMS of the box (3-200 Hz)", "Resonance",
+                                        "Tilt vs reference"))
+    for a, col in (("x", CYAN), ("y", PURPLE), ("z", AMBER)):
+        c = f"disp_{a}_mm"
+        if c in d.columns:
+            fig.add_trace(go.Scatter(x=_x(d), y=smooth(d[c], smooth_s), name=a.upper(), line=dict(color=col, width=1.5)), 1, 1)
+    if "res_level" in d.columns:
+        lvl = d["res_level"]
+        colors = lvl.map({0: GRID, 1: AMBER, 2: RED}).fillna(GRID)
+        tip = None
+        if "res_freq_hz" in d.columns:
+            tip = d["res_freq_hz"].round(1).astype(str) + " Hz, " + d.get("res_amp_ms2", pd.Series(index=d.index)).round(2).astype(str) + " m/s2"
+        fig.add_trace(go.Bar(x=_x(d), y=lvl, marker_color=colors, name="resonance level", showlegend=False,
+                             hovertext=tip), 2, 1)
+    for c, col, nm in (("pitch_deg", MUTED, "pitch (raw)"), ("pitch_static_deg", GREEN, "pitch (accel removed)"),
+                       ("roll_deg", PURPLE, "roll")):
+        if c in d.columns:
+            fig.add_trace(go.Scatter(x=_x(d), y=smooth(d[c], max(smooth_s, 3)), name=nm, line=dict(color=col, width=1.3)), 3, 1)
+    fig.update_yaxes(title_text="mm", row=1, col=1)
+    fig.update_yaxes(title_text="level", range=[0, 2.2], tickvals=[0, 1, 2], row=2, col=1)
+    fig.update_yaxes(title_text="deg", row=3, col=1)
+    if gaps is not None:
+        shade_gaps(fig, gaps, rows=3)
+    fig.update_annotations(font=dict(color=MUTED, size=12))
+    return _style(fig, "Structure of the box support", 720)
+
+
 def fig_quality(df: pd.DataFrame, gaps: pd.DataFrame | None = None) -> go.Figure:
-    cols = [c for c in ("missed", "imu_err", "jitter_max_us", "job_max_us", "gps_age_ms", "sats", "pi_undervolt")
+    cols = [c for c in ("missed", "imu_err", "jitter_max_us", "job_max_us", "gps_age_ms", "sats", "pitot_err",
+                        "pi_undervolt", "cpu_temp")
             if _has(df, c)]
     if not cols:
         return empty("No quality fields")
@@ -290,7 +363,7 @@ def fig_histogram(df: pd.DataFrame, col: str, bins: int = 40) -> go.Figure:
 
 def fig_correlation(df: pd.DataFrame, cols: list[str] | None = None) -> go.Figure:
     cols = cols or ["speed_kmh", "long_accel_ms2", "lat_accel_ms2", "vib_rms_total", "az_rms", "az_freq",
-                    "load_mean", "bme_temp", "alt_m", "batt_a"]
+                    "airspeed_kmh", "wind_kmh", "disp_total_mm", "pitch_static_deg", "load_mean", "bme_temp", "alt_m"]
     cols = [c for c in cols if _has(df, c) and df[c].nunique() > 2]
     if len(cols) < 2:
         return empty("Not enough variables to correlate")
