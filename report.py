@@ -44,7 +44,7 @@ details summary{cursor:pointer;color:#9e9e9e}
 def tiles(summary: dict) -> list[tuple[str, str]]:
     s, d = summary.get("session", {}), summary.get("driving", {})
     v, q = summary.get("vibration", {}), summary.get("quality", {})
-    env, pw = summary.get("environment", {}), summary.get("power", {})
+    env, sr, ai = summary.get("environment", {}), summary.get("structure", {}), summary.get("airspeed", {})
 
     def fmt(x, unit=""):
         return "--" if x is None else f"{x}{unit}"
@@ -60,7 +60,10 @@ def tiles(summary: dict) -> list[tuple[str, str]]:
         ("Vib. vs speed (r)", fmt(v.get("corr_rms_total_vs_speed"))),
         ("Air temp (mean)", fmt(env.get("bme_temp", {}).get("mean"), " C")),
         ("Missed IMU samples", fmt(q.get("missed_total"))),
-        ("Battery energy used", fmt(pw.get("energy_wh"), " Wh")),
+        ("Max airspeed (pitot)", fmt(ai.get("max_airspeed_kmh"), " km/h")),
+        ("Mean headwind > 40 km/h", fmt(ai.get("mean_headwind_kmh_above_40"), " km/h")),
+        ("Max box displacement Z", fmt(sr.get("disp_z_max_mm"), " mm")),
+        ("Resonance warning / caution", f"{fmt(sr.get('warning_s'))} / {fmt(sr.get('caution_s'))} s"),
     ]
     return out
 
@@ -81,9 +84,13 @@ def figures(res: CleanResult, raw: pd.DataFrame | None, tiles_map: bool = True) 
         ("Vibration vs speed", plots.fig_vib_vs_speed(df)),
         ("Dominant frequency vs speed", plots.fig_freq_vs_speed(df)),
         ("Spectrogram", plots.fig_spectrogram(raw) if raw is not None else None),
-        ("Load cell", plots.fig_load(df, gaps)),
+        ("Airspeed", plots.fig_airspeed(df, gaps)),
+        ("Pitot vs GPS dynamic pressure", plots.fig_dp_vs_q(df)),
+        ("Structure of the box support", plots.fig_structure(df, gaps)),
+        ("Load cell", plots.fig_load(df, gaps) if "load_mean" in df.columns else None),
         ("Environment", plots.fig_lines(df, ["bme_temp", "bme_hum", "bme_press", "air_density"], "Environment (BME280)", gaps)),
-        ("Power", plots.fig_lines(df, ["batt_v", "batt_a", "batt_soc"], "Battery", gaps)),
+        ("Battery", plots.fig_lines(df, ["batt_v", "batt_a", "batt_soc"], "Battery", gaps)
+         if "batt_v" in df.columns else None),
         ("Data quality", plots.fig_quality(df, gaps)),
         ("Correlations", plots.fig_correlation(df)),
     ]
@@ -142,7 +149,7 @@ def main() -> None:
     paths = []
     for pat in a.csv:
         paths += glob.glob(pat) or [pat]
-    paths = [p for p in paths if not p.endswith("_raw.csv") and not p.endswith("_clean.csv")]
+    paths = [p for p in paths if not p.endswith(("_raw.csv", "_clean.csv", "_frames.csv", "_summary.json"))]
     opt = CleanOptions()
     for path in paths:
         name = os.path.basename(path)
