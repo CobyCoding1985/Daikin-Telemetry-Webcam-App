@@ -24,7 +24,8 @@ COLUMNS: dict[str, Col] = {
     "seq":            Col("Packet number", "", "quality"),
     "t_us":           Col("Teensy time", "us", "quality"),
     "utc_ms":         Col("UTC time", "ms", "quality"),
-    "time_src":       Col("Time source", "", "quality", 0, 2),
+    "time_src":       Col("Time source", "", "quality", 0, 3),   # 0 none, 1 GPS, 2 GPS+PPS, 3 RTC on battery
+    "time_age_s":     Col("Time since last GPS correction", "s", "quality", -1, None),
     "fs_hz":          Col("Sampling rate", "Hz", "quality"),
     "n":              Col("Samples per window", "", "quality"),
     "missed":         Col("Missed samples", "", "quality", 0, None),

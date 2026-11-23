@@ -143,7 +143,7 @@ def clean_session(raw: pd.DataFrame, opt: CleanOptions | None = None, name: str 
             utc_t = utc_t.where(df["time_src"] >= 1)
         utc_t = utc_t.dt.tz_convert(opt.timezone).dt.tz_localize(None)
     if utc_t is not None and utc_t.notna().mean() >= 0.5:
-        t, res.meta["time_source"] = utc_t, "GPS UTC (shown in local time)"
+        t, res.meta["time_source"] = utc_t, "UTC from GPS / battery RTC (shown in local time)"
     elif pi_t is not None:
         t, res.meta["time_source"] = pi_t, "Raspberry Pi clock"
     else:
